@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure P2P Wallet</title>
+    <style>
+        :root { --primary: #5f259f; --secondary: #28a745; --bg: #f0f2f5; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: white; width: 450px; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; }
+        .hidden { display: none !important; }
+        .header { background: var(--primary); color: white; padding: 20px; border-radius: 15px; margin-bottom: 20px; }
+        input { width: 100%; margin: 10px 0; padding: 14px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; }
+        .btn { width: 100%; padding: 15px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 10px; }
+        .btn-main { background: var(--secondary); color: white; }
+        .btn-sub { background: var(--primary); color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
+        .sent { color: #d9534f; font-weight: bold; }
+        .received { color: #5cb85c; font-weight: bold; }
+        .balance-amount { font-size: 48px; color: var(--secondary); margin: 20px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="page-auth" class="card" style="background: #ADD8E6;">
+        <h2 id="auth-title">Wallet Registration</h2>
+        <div id="reg-fields">
+            <input type="text" id="regName" placeholder="Full Name">
+            <input type="number" id="regBalance" placeholder="Initial Deposit Amount">
+        </div>
+        <input type="email" id="regEmail" placeholder="Email Address">
+        <input type="password" id="regPin" placeholder="Set 4-Digit Security PIN" maxlength="4">
+        <button class="btn btn-main" onclick="handleAuth()">Enter Wallet</button>
+        <button style="background:none; border:none; color:var(--primary); text-decoration:underline; cursor:pointer; margin-top:15px;" onclick="toggleAuthMode()">
+            <span id="toggle-text">Already have an account? Login</span>
+        </button>
+    </div>
+
+    <div id="page-dashboard" class="card hidden">
+        <div class="header">
+            <h2 id="welcome-msg">Account Dashboard</h2>
+            <div id="display-email" style="font-size: 0.9em; opacity: 0.8;"></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <button class="btn btn-sub" onclick="handleCheckBalance()">💰 Check Balance</button>
+            <button class="btn btn-sub" onclick="showPage('page-transfer')">💸 Send Money</button>
+            <button class="btn btn-sub" onclick="showPage('page-history')">📜 History</button>
+            <button class="btn" style="background:#6c757d; color:white;" onclick="location.reload()">🚪 Logout</button>
+        </div>
+    </div>
+
+    <div id="page-balance" class="card hidden">
+        <h2>Your Current Balance</h2>
+        <div class="balance-amount" id="balanceValue">$0.00</div>
+        <button class="btn btn-sub" onclick="showPage('page-dashboard')">Back to Home</button>
+    </div>
+
+    <div id="page-transfer" class="card hidden">
+        <h2>Transfer Funds</h2>
+        <input type="email" id="toEmail" placeholder="Recipient Email">
+        <input type="number" id="amount" placeholder="Amount to Send">
+        <button class="btn btn-main" onclick="handleTransfer()">Confirm Transfer</button>
+        <button class="btn btn-sub" onclick="showPage('page-dashboard')">Back to Home</button>
+    </div>
+
+    <div id="page-history" class="card hidden" style="width: 600px;">
+        <h2>Transaction History</h2>
+        <table>
+            <thead><tr><th>User</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody id="history-body"></tbody>
+        </table>
+        <button class="btn btn-sub" onclick="showPage('page-dashboard')">Back to Home</button>
+    </div>
+
+    <script>
+        let currentUserEmail = "";
+        let isLoginMode = false;
+
+        function showPage(pageId) {
+            document.querySelectorAll('.card').forEach(card => card.classList.add('hidden'));
+            document.getElementById(pageId).classList.remove('hidden');
+            if(pageId === 'page-history') fetchHistory();
+        }
+
+        function toggleAuthMode() {
+            isLoginMode = !isLoginMode;
+            document.getElementById('reg-fields').style.display = isLoginMode ? 'none' : 'block';
+            document.getElementById('auth-title').innerText = isLoginMode ? "Wallet Login" : "Wallet Registration";
+            document.getElementById('toggle-text').innerText = isLoginMode ? "New here? Create an Account" : "Already have an account? Login";
+        }
+
+        async function handleAuth() {
+            const email = document.getElementById('regEmail').value;
+            const pin = document.getElementById('regPin').value;
+            if (!email || !pin) { alert("Please enter both email and PIN"); return; }
+
+            if (!isLoginMode) {
+                const name = document.getElementById('regName').value;
+                const balance = document.getElementById('regBalance').value;
+                const response = await fetch(`/api/wallet/register?name=${name}&email=${email}&balance=${balance}&pin=${pin}`, { method: 'POST' });
+                const result = await response.text();
+                if (result.includes("Error")) { alert(result); return; }
+            }
+            currentUserEmail = email;
+            document.getElementById('display-email').innerText = email;
+            showPage('page-dashboard');
+        }
+
+        async function handleCheckBalance() {
+            try {
+                const res = await fetch('/api/wallet/users');
+                const users = await res.json();
+                const user = users.find(u => u.email.toLowerCase() === currentUserEmail.toLowerCase());
+                if (user) {
+                    document.getElementById('balanceValue').innerText = `$${user.balance.toFixed(2)}`;
+                    showPage('page-balance');
+                } else {
+                    alert("User details not found.");
+                }
+            } catch (e) { alert("Error fetching balance."); }
+        }
+
+        async function handleTransfer() {
+            const to = document.getElementById('toEmail').value;
+            const amt = document.getElementById('amount').value;
+            const pin = prompt("Enter your 4-digit Security PIN to authorize this transaction:");
+            if (!pin) return;
+
+            const response = await fetch(`/api/wallet/transfer?from=${currentUserEmail}&to=${to}&amount=${amt}&pin=${pin}`, { method: 'POST' });
+            const status = await response.text();
+            alert(status);
+            if (status.includes("Success")) {
+                showPage('page-dashboard');
+                document.getElementById('toEmail').value = "";
+                document.getElementById('amount').value = "";
+            }
+        }
+
+        async function fetchHistory() {
+            const body = document.getElementById('history-body');
+            body.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
+            try {
+                const response = await fetch(`/api/wallet/transactions?email=${currentUserEmail}`);
+                const transactions = await response.json();
+                body.innerHTML = '';
+                if (!transactions || transactions.length === 0) {
+                    body.innerHTML = '<tr><td colspan="4" style="text-align:center;">No history.</td></tr>';
+                    return;
+                }
+                transactions.forEach(tx => {
+                    const isSender = tx.senderEmail.toLowerCase() === currentUserEmail.toLowerCase();
+                    body.innerHTML += `<tr><td>${isSender ? tx.receiverEmail : tx.senderEmail}</td><td>${new Date(tx.timestamp).toLocaleString()}</td><td>$${tx.amount.toFixed(2)}</td><td class="${isSender ? 'sent' : 'received'}">${isSender ? "Sent" : "Received"}</td></tr>`;
+                });
+            } catch (e) { body.innerHTML = '<tr><td colspan="4">Error loading history.</td></tr>'; }
+        }
+    </script>
+</body>
+</html>
